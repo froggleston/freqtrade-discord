@@ -1,5 +1,5 @@
 ---
-token: "your_token_here"
+token: "your_discord_bot_token_here"
 
 servers:
     - name        : "bot1"
