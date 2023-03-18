@@ -22,6 +22,7 @@ Conception Date: 2023-03-17
 import aiohttp
 import argparse
 import discord
+import logging
 import traceback
 
 from tabulate import tabulate
@@ -30,75 +31,80 @@ token = None
 auth = None
 servers = {}
 
-intents = discord.Intents.default()
-client = discord.Client(intents=intents)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+logger = logging.getLogger("ft_bot")
 
-@client.event
-async def on_ready():
-    print(f'We have logged in as {client.user}')
+class ft_bot(discord.Client):
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
+    def _on_ready(self):
+        print(f'We have logged in as {self.user}')
 
-    cmd_string = message.content.split(" ")
-    cmd = cmd_string[0]
+    async def on_message(self, message):
+        # don't let the bot reply to itself
+        if message.author == self.user:
+            return
 
-    if cmd.startswith('$servers'):
-        resp = []
-        headers = ["NAME","IP","PORT"]
-        resp.append(headers)
+        cmd_string = message.content.split(" ")
+        cmd = cmd_string[0]
 
-        for k,v in servers.items():
-            resp.append([k,v['ip'],v['port']])
-        table = tabulate(resp,headers='firstrow',tablefmt='grid')
-        await message.channel.send(f"```{table}```")
-    else:
-        if len(cmd_string) > 1:
-            server = cmd_string[1]
+        if cmd.startswith('$servers'):
+            resp = []
+            headers = ["NAME","IP","PORT"]
+            resp.append(headers)
+
+            for k,v in servers.items():
+                resp.append([k,v['ip'],v['port']])
+            table = tabulate(resp,headers='firstrow',tablefmt='grid')
+            await message.channel.send(f"```{table}```")
         else:
-            return "ERROR: No server specified. Run `$servers` to list them."
+            if len(cmd_string) > 1:
+                server = cmd_string[1]
+            else:
+                return "ERROR: No server specified. Run `$servers` to list them."
 
-        ip = servers[server]['ip']
-        port = servers[server]['port']
-        auth = servers[server]['auth']
+            ip = servers[server]['ip']
+            port = servers[server]['port']
+            auth = servers[server]['auth']
+            base_url = f"http://{ip}:{port}/api/v1"
 
-        if cmd.startswith('$ping'):
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f'http://{ip}:{port}/api/v1/ping') as r:
-                    if r.status == 200:
-                        js = await r.json()
-                        embeds = [
-                            {"title":"PING",
-                             "fields":[{"name":"Response","value":js['status']}]
-                            }
-                        ]
-                        embed = discord.Embed.from_dict(embeds[0])
-                        await message.channel.send(embed=embed)
-                    else:
-                        await message.channel.send(f"Error: Status {r.status} received.")
+            if cmd.startswith('$ping'):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f'{base_url}/ping') as r:
+                        if r.status == 200:
+                            js = await r.json()
+                            embeds = [
+                                {"title":"PING",
+                                "fields":[{"name":"Response","value":js['status']}]
+                                }
+                            ]
+                            embed = discord.Embed.from_dict(embeds[0])
+                            await message.channel.send(embed=embed)
+                        else:
+                            await message.channel.send(f"Error: Status {r.status} received.")
 
-        if cmd.startswith('$status'):
-            async with aiohttp.ClientSession(auth=auth) as session:
-                async with session.get(f'http://{ip}:{port}/api/v1/status') as r:
-                    if r.status == 200:
-                        js = await r.json()
-                        resp = []
-                        headers = ["ID","PAIR","PROFIT %","PROFIT"]
-                        resp.append(headers)
-                        for trade in js:
-                            resp.append(
-                                [trade['trade_id'],
-                                 trade['pair'],
-                                 trade['current_profit_pct'],
-                                 f"{trade['current_profit_abs']} {trade['quote_currency']}"
-                                ]
-                            )
-                        table = tabulate(resp,headers='firstrow',tablefmt='grid')
-                        await message.channel.send(f"```{table}```")
-                    else:
-                        await message.channel.send(f"Error: Status {r.status} received.")
+            if cmd.startswith('$status'):
+                async with aiohttp.ClientSession(auth=auth) as session:
+                    async with session.get(f'{base_url}/status') as r:
+                        if r.status == 200:
+                            js = await r.json()
+                            resp = []
+                            headers = ["ID","PAIR","PROFIT %","PROFIT"]
+                            resp.append(headers)
+                            for trade in js:
+                                resp.append(
+                                    [trade['trade_id'],
+                                    trade['pair'],
+                                    trade['current_profit_pct'],
+                                    f"{trade['current_profit_abs']} {trade['quote_currency']}"
+                                    ]
+                                )
+                            table = tabulate(resp,headers='firstrow',tablefmt='grid')
+                            await message.channel.send(f"```{table}```")
+                        else:
+                            await message.channel.send(f"Error: Status {r.status} received.")
 
 
 class dotdict(dict):
@@ -108,11 +114,14 @@ class dotdict(dict):
     __delattr__ = dict.__delitem__
 
 
-def main():
+def add_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("-y", "--yaml", nargs='?', help="Supply a YAML file.")
     args = parser.parse_args()
+    
+    return args
 
+def main(args):
     if args.yaml is not None:
         import yaml
         with open(args.yaml, 'r') as yamlfile:
@@ -130,13 +139,19 @@ def main():
                                                encoding='utf-8')
             servers[s['name']] = server
 
+        intents = discord.Intents.default()
+        intents.message_content = True
+        client = ft_bot(intents=intents)
+
         client.run(token)
     else:
         raise Exception("No YAML file supplied.")
 
 if __name__ == "__main__":
+    args = add_arguments()
+
     try:
-        main()
+        main(args)
 
     except Exception as e:
         traceback.print_exc()
