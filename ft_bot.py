@@ -1,17 +1,29 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 """
-The discord bot requires the 'message_content' intent to be set
+freqtrade-discord
+An unofficial discord bot to view and control freqtrade bots, much like
+the telegram implementation.
+
+NB: This discord bot requires the 'message_content' intent to be set
 in the Discord Developer portal for this app.
 
-Author: @froggleston
-Date: 2023-03-17
+Licence: MIT [https://github.com/froggleston/freqtrade-frogtrade9000/blob/main/LICENSE]
+
+Donations:
+    BTC: bc1qxdfju58lgrxscrcfgntfufx5j7xqxpdufwm9pv
+    ETH: 0x581365Cff1285164E6803C4De37C37BbEaF9E5Bb
+
+Conception Date: 2023-03-17
 
 """
 
 import aiohttp
 import argparse
 import discord
+import traceback
+
 from tabulate import tabulate
 
 token = None
@@ -57,11 +69,15 @@ async def on_message(message):
                 async with session.get(f'http://{ip}:{port}/api/v1/ping') as r:
                     if r.status == 200:
                         js = await r.json()
-                        embeds = [{"title":"PING","fields":[{"name":"Response","value":js['status']}]}]
+                        embeds = [
+                            {"title":"PING",
+                             "fields":[{"name":"Response","value":js['status']}]
+                            }
+                        ]
                         embed = discord.Embed.from_dict(embeds[0])
                         await message.channel.send(embed=embed)
                     else:
-                        await message.channel.send("Arse")
+                        await message.channel.send(f"Error: Status {r.status} received.")
 
         if cmd.startswith('$status'):
             async with aiohttp.ClientSession(auth=auth) as session:
@@ -72,11 +88,17 @@ async def on_message(message):
                         headers = ["ID","PAIR","PROFIT %","PROFIT"]
                         resp.append(headers)
                         for trade in js:
-                            resp.append([trade['trade_id'],trade['pair'],trade['current_profit_pct'],f"{trade['current_profit_abs']} {trade['quote_currency']}"])
+                            resp.append(
+                                [trade['trade_id'],
+                                 trade['pair'],
+                                 trade['current_profit_pct'],
+                                 f"{trade['current_profit_abs']} {trade['quote_currency']}"
+                                ]
+                            )
                         table = tabulate(resp,headers='firstrow',tablefmt='grid')
                         await message.channel.send(f"```{table}```")
                     else:
-                        await message.channel.send("Arse")
+                        await message.channel.send(f"Error: Status {r.status} received.")
 
 
 class dotdict(dict):
@@ -103,7 +125,9 @@ def main():
             server = {}
             server['ip'] = s['ip']
             server['port'] = s['port']
-            server['auth'] = aiohttp.BasicAuth(login=s['username'], password=s['password'], encoding='utf-8')
+            server['auth'] = aiohttp.BasicAuth(login=s['username'],
+                                               password=s['password'],
+                                               encoding='utf-8')
             servers[s['name']] = server
 
         client.run(token)
