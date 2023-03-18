@@ -28,7 +28,7 @@ Run `pip3 install -r requirements.txt` to install dependencies.
 
 * Create a [Discord Developer Portal](https://discord.com/developers) account
 
-* Register a New Application as per the [discord.py docs](https://discordpy.readthedocs.io/en/latest/discord.html)
+* Register a New Application as per the [discord.py docs](https://discordpy.readthedocs.io/en/latest/discord.html), or follow the instructions below:
   * Log in to the Discord Developer Portal
   * Click `New Application`
   * Give the bot a name, like `ft_bot`
