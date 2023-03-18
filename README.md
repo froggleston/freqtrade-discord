@@ -22,6 +22,8 @@ Run `pip3 install -r requirements.txt` to install dependencies.
   * Set the username and password information
   * Save the file
 
+### Creating the bot in the Discord Developer Portal
+
 * Create a [Discord Developer Portal](https://discord.com/developers) account
 
 * Register a New Application as per the [discord.py docs](https://discordpy.readthedocs.io/en/latest/discord.html)
@@ -60,6 +62,7 @@ Run `pip3 install -r requirements.txt` to install dependencies.
   * Under `Bot Permissions`:
     * __Send Messages__ should be CHECKED
     * __Read Messages/View Channels__ should be CHECKED
+    * __Read Message History__ should be CHECKED
   
   * Copy the `Generated URL` at the bottom of the page
 
@@ -69,5 +72,14 @@ Run `pip3 install -r requirements.txt` to install dependencies.
   * Confirm that the bot is set to Read Messages and Send Messages
   * Close the tab
 
-* Run the `ft_bot.py` script in a screen/tmux
-  * `python3 ft_bot.py -y your_yaml_file.yaml`
+### Running the ft_bot.py script
+
+* Run the `ft_bot.py` script in a [screen](https://www.redhat.com/sysadmin/tips-using-screen) or [tmux](https://www.redhat.com/sysadmin/introduction-tmux-linux)
+  * `python3 ft_bot.py -y my_ft_bots.yaml`
+
+### Checking the bot is in your discord server
+
+* Go to your discord server, Server Settings, and Integrations
+  * Your new bot should be listed under `Bots and Apps` - congratulations!
+  * Click on `Manage` next to your bot, and select the channels you wish this bot to listen on, and who you wish to be able to message the bot
+  * Consider setting strict user access, e.g. you only, so that you can restrict who can control the bot as the bot matures and gets more commands
