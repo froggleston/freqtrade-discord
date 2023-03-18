@@ -1,6 +1,8 @@
 # freqtrade-discord
 
-Unofficial discord bot to view and control running freqtrade instances
+Unofficial discord bot to view and control running freqtrade instances.
+
+At the moment, only `$servers`, `$ping` and `$status` commands work!
 
 ## Requirements
 
