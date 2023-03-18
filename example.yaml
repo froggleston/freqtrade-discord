@@ -1,0 +1,14 @@
+---
+token: "your_token_here"
+
+servers:
+    - name        : "bot1"
+      username    : "user"
+      password    : "pass"
+      ip          : 127.0.0.1
+      port        : 8080
+    - name        : "bot2"
+      username    : "user"
+      password    : "pass"
+      ip          : 127.0.0.1
+      port        : 8082
