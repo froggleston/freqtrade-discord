@@ -12,9 +12,11 @@ Run `pip3 install -r requirements.txt` to install dependencies.
 
 ### Installing the python script
 
-* Put the `ft_bot.py` and `example.yaml` files wherever the FT bot is running 
-  * The easiest place would be the freqtrade/scripts folder
-  * Yes, you can view and control multiple bots!
+* Put the `ft_bot.py` and `example.yaml` files wherever you like 
+  * If you want to control a bot locally, the easiest place would be the freqtrade/scripts folder
+  * Yes, you can view and control multiple local and remote bots!
+  * If you're using a VPS or other remote/cloud server solution, I recommend you use a VPN like [tailscale](https://tailscale.com) so that you can use the internal
+    VPNed IP addresses that the tailscale service gives you
 
 * Rename/copy the `example.yaml` file as a new file, e.g. `my_ft_bots.yaml`, and edit this new file:
   * Leave the `token` field at the top of the file empty for now
