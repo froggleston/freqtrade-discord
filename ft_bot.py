@@ -68,9 +68,9 @@ class ft_bot(discord.Client):
                               server: str,
                               command: str,
                               command_args: Optional[List[Any]]) -> Dict:
-        ip = servers[server]['ip']
-        port = servers[server]['port']
-        auth = servers[server]['auth']
+        ip = self.servers[server]['ip']
+        port = self.servers[server]['port']
+        auth = self.servers[server]['auth']
         base_url = f"http://{ip}:{port}/api/v1"
 
         cmd = command.replace("$","")
@@ -101,7 +101,7 @@ class ft_bot(discord.Client):
         msg = []
         headers = ["ID","PAIR","PROFIT %","PROFIT"]
         msg.append(headers)
-        for trade in js:
+        for trade in data:
             msg.append(
                 [trade['trade_id'],
                 trade['pair'],
@@ -113,30 +113,30 @@ class ft_bot(discord.Client):
         embed = f"```{table}```"
         return embed
 
-    def send_msg(self, server: str, msg: Dict, title: str) -> Dict:
-        msg['bot'] = server
-        color = 0x0000FF
-        if msg['type'] in (RPCMessageType.EXIT, RPCMessageType.EXIT_FILL):
-            profit_ratio = msg.get('profit_ratio')
-            color = (0x00FF00 if profit_ratio > 0 else 0xFF0000)
-        if 'pair' in msg:
-            title = f"Trade: {msg['pair']} {msg['type'].value}"
-        embeds = [{
-            'title': title,
-            'color': color,
-            'fields': [],
-        }]
-        for f in fields:
-            for k, v in f.items():
-                v = v.format(**msg)
-                embeds[0]['fields'].append(
-                    {'name': k, 'value': v, 'inline': True})
+    # def send_msg(self, server: str, msg: Dict, title: str) -> Dict:
+    #     msg['bot'] = server
+    #     color = 0x0000FF
+    #     if msg['type'] in (RPCMessageType.EXIT, RPCMessageType.EXIT_FILL):
+    #         profit_ratio = msg.get('profit_ratio')
+    #         color = (0x00FF00 if profit_ratio > 0 else 0xFF0000)
+    #     if 'pair' in msg:
+    #         title = f"Trade: {msg['pair']} {msg['type'].value}"
+    #     embeds = [{
+    #         'title': title,
+    #         'color': color,
+    #         'fields': [],
+    #     }]
+    #     for f in fields:
+    #         for k, v in f.items():
+    #             v = v.format(**msg)
+    #             embeds[0]['fields'].append(
+    #                 {'name': k, 'value': v, 'inline': True})
 
-        # Send the message to discord channel
-        payload = {'embeds': embeds}
-        return payload
+    #     # Send the message to discord channel
+    #     payload = {'embeds': embeds}
+    #     return payload
 
-    async def on_message(self, message: str) -> None:
+    async def on_message(self, message) -> None:
         # don't let the bot reply to itself
         if message.author == self.user:
             return
@@ -149,15 +149,15 @@ class ft_bot(discord.Client):
             headers = ["NAME","IP","PORT"]
             resp.append(headers)
 
-            for k,v in servers.items():
+            for k,v in self.servers.items():
                 resp.append([k,v['ip'],v['port']])
             table = tabulate(resp,headers='firstrow',tablefmt='grid')
             await message.channel.send(f"```{table}```")
         else:
             cmd_args = []
 
-            if len(servers) == 1:
-                server = servers.keys()[0]
+            if len(self.servers) == 1:
+                server = list(self.servers.keys())[0]
                 cmd_args = cmd_string[1:]
             else:
                 if len(cmd_string) > 1:
