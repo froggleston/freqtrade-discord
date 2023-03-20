@@ -12,3 +12,10 @@ servers:
       password    : "pass"
       ip          : 127.0.0.1
       port        : 8082
+
+disabled_calls:
+    - "reload_config"
+    - "start"
+    - "stop"
+    - "forceenter"
+    - "forceexit"
