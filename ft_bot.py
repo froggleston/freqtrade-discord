@@ -9,7 +9,7 @@ the telegram implementation.
 NB: This discord bot requires the 'message_content' intent to be set
 in the Discord Developer portal for this app.
 
-Licence: MIT [https://github.com/froggleston/freqtrade-frogtrade9000/blob/main/LICENSE]
+Licence: MIT [https://github.com/froggleston/freqtrade-discord/blob/main/LICENSE]
 
 Donations:
     BTC: bc1qxdfju58lgrxscrcfgntfufx5j7xqxpdufwm9pv
@@ -113,7 +113,7 @@ class ft_bot(discord.Client):
         embed = f"```{table}```"
         return embed
 
-    # def send_msg(self, server: str, msg: Dict, title: str) -> Dict:
+    # async def send_msg(self, server: str, msg: Dict, title: str) -> Dict:
     #     msg['bot'] = server
     #     color = 0x0000FF
     #     if msg['type'] in (RPCMessageType.EXIT, RPCMessageType.EXIT_FILL):
