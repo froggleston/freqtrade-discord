@@ -24,11 +24,9 @@ import argparse
 import discord
 import logging
 import traceback
-
-from discord.embeds import Embed
+from typing import Any, Dict, List, Optional
 
 from tabulate import tabulate
-from typing import Any, Dict, List, Optional
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,12 +42,10 @@ class ft_bot(discord.Client):
                  disabled_calls: Optional[List[str]] = None):
         self.servers = {}
         self.available_calls = {'ping' : self._process_ping,
-                                'status' : self._process_status,
-                                'trades' : self._process_trades}
+                                'status' : self._process_status}
 
         logger.info(f"Available commands: {list(self.available_calls.keys())}")
 
-        self.disabled_calls = []
         if disabled_calls is not None:
             self.disabled_calls = disabled_calls
             logger.info(f"Disabled commands: {self.disabled_calls}")
@@ -81,10 +77,10 @@ class ft_bot(discord.Client):
 
         if cmd in self.available_calls and cmd not in self.disabled_calls:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f'{base_url}/{cmd}', auth=auth) as r:
+                async with session.get(f'{base_url}/{cmd}') as r:
                     if r.status == 200:
                         js = await r.json()
-                        return js
+                        return self.available_calls[cmd](js, command_args)
                     else:
                         raise Exception(f"Error: Status {r.status} received.")
         else:
@@ -92,7 +88,7 @@ class ft_bot(discord.Client):
         
         return None
 
-    def _process_ping(self, data, *command_args):
+    def _process_ping(self, data: Dict, command_args = None):
         embeds = [
             {"title":"PING",
             "fields":[{"name":"Response","value":data['status']}]
@@ -101,29 +97,21 @@ class ft_bot(discord.Client):
         embed = discord.Embed.from_dict(embeds[0])
         return embed
 
-    def _process_status(self, data, *command_args):
-        logger.info("Processing status")
-        
+    def _process_status(self, data: Dict, command_args = None):
         msg = []
         headers = ["ID","PAIR","PROFIT %","PROFIT"]
         msg.append(headers)
-        if data and len(data) > 0:
-            for trade in data:
-                msg.append(
-                    [trade['trade_id'],
-                    trade['pair'],
-                    trade['current_profit_pct'],
-                    f"{trade['current_profit_abs']} {trade['quote_currency']}"
-                    ]
-                )
-            table = tabulate(msg, headers='firstrow', tablefmt='grid')
-            return f"```{table}```"
-        else:
-            return f"`No active trades`"
-
-    def _process_trades(self, data, *command_args):
-        logger.info(f"Processing latest {command_args[0]} trades")
-        return f"```test```"
+        for trade in data:
+            msg.append(
+                [trade['trade_id'],
+                trade['pair'],
+                trade['current_profit_pct'],
+                f"{trade['current_profit_abs']} {trade['quote_currency']}"
+                ]
+            )
+        table = tabulate(msg, headers='firstrow', tablefmt='grid')
+        embed = f"```{table}```"
+        return embed
 
     # async def send_msg(self, server: str, msg: Dict, title: str) -> Dict:
     #     msg['bot'] = server
@@ -154,9 +142,8 @@ class ft_bot(discord.Client):
             return
 
         cmd_string = message.content.split(" ")
-        command = cmd_string[0]
-        cmd = command.replace("$","")
-        
+        cmd = cmd_string[0]
+
         if cmd.startswith('$servers'):
             resp = []
             headers = ["NAME","IP","PORT"]
@@ -169,34 +156,22 @@ class ft_bot(discord.Client):
         else:
             cmd_args = []
 
-            try:
-                if len(self.servers) == 1:
-                    server = list(self.servers.keys())[0]
-                    if len(cmd_string) > 1:
-                        cmd_args = cmd_string[1:]
+            if len(self.servers) == 1:
+                server = list(self.servers.keys())[0]
+                cmd_args = cmd_string[1:]
+            else:
+                if len(cmd_string) > 1:
+                    server = cmd_string[1]
+                    cmd_args = cmd_string[2:]
                 else:
-                    if len(cmd_string) > 1:
-                        server = cmd_string[1]
-                        if server not in self.servers:
-                            await message.channel.send(f"More than one server available, but no server specified. Use: {cmd} <server> <options>")
-                            return None
-                    else:
-                        await message.channel.send(f"More than one server available, but no server specified. Use: {cmd} <server> <options>")
-                        return None
-                    
-                    if len(cmd_string) > 2:
-                        cmd_args = cmd_string[2:]
+                    await message.channel.send("ERROR: No server specified. Run `$servers` to list them.")
 
-                js = (await self.process_command(server, cmd, cmd_args))
-                func = self.available_calls[cmd]
-                embed = func(js, *cmd_args)
-                if embed is not None:
-                    if isinstance(embed, Embed):
+                try:
+                    embed = self.process_command(server, cmd, cmd_args)
+                    if embed is not None:
                         await message.channel.send(embed=embed)
-                    else:
-                        await message.channel.send(embed)
-            except Exception as e:
-                await message.channel.send(f"ERROR: {e}")
+                except Exception as e:
+                    await message.channel.send(f"ERROR: {e}")
 
 
 class dotdict(dict):
