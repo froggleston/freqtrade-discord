@@ -2,6 +2,17 @@
 
 Unofficial discord bot to view and control running freqtrade instances.
 
+## Supported commands
+
+* `/ping`
+* `/show_config`
+* `/status`
+* `/profit`
+* `/trades`
+* `/daily`
+* `/weekly`
+* `/monthly`
+
 ## Requirements
 
 Run `pip3 install -r requirements.txt` to install dependencies.
