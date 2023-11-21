@@ -1,4 +1,6 @@
 aiohttp
+arrow
 discord.py
-tabulate
+python-rapidjson
 PyYAML
+tabulate
