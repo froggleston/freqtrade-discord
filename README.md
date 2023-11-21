@@ -2,8 +2,6 @@
 
 Unofficial discord bot to view and control running freqtrade instances.
 
-At the moment, only `$servers`, `$ping` and `$status` commands work!
-
 ## Requirements
 
 Run `pip3 install -r requirements.txt` to install dependencies.
