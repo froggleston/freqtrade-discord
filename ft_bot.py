@@ -30,6 +30,8 @@ import traceback
 
 from dataclasses import dataclass
 from discord.embeds import Embed
+from discord.ui import Button
+from discord import Color
 
 from tabulate import tabulate
 from typing import Any, Dict, List, Optional
@@ -50,6 +52,34 @@ class TimeunitMappings:
     default: int
 
 CMD_PREFIX_CHAR = "/"
+
+
+class RefreshableView(discord.ui.View):
+    def __init__(self,
+                 cmdfunc,
+                 cmd_args,
+                 callback,
+                 server: str,
+                 cmd: str,
+                 params: dict = {}):
+        super().__init__()
+        self.cmdfunc = cmdfunc
+        self.cmd_args = cmd_args
+        self.callback = callback
+        self.server = server
+        self.cmd = cmd
+        self.params = params
+
+    @discord.ui.button(label="Refresh")
+    async def refresh(self, interaction, button):
+        js = (await self.cmdfunc(self.server, self.cmd, self.params))
+        embed, refreshable = self.callback(self.server, js, *self.cmd_args)
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=self
+        )
+
 
 class ft_bot(discord.Client):
 
@@ -86,7 +116,9 @@ class ft_bot(discord.Client):
         super().__init__(intents=intents)
 
     def _on_ready(self):
-        logger.info(f'We have logged in as {self.user}. Tracking {len(self.servers)} freqtrade servers')
+        logger.info(
+            f'We have logged in as {self.user}. Tracking {len(self.servers)} freqtrade servers'
+        )
 
     async def process_command(self,
                               server: str,
@@ -107,6 +139,10 @@ class ft_bot(discord.Client):
         cmd = command.replace(CMD_PREFIX_CHAR,"")
 
         if cmd in self.available_calls and cmd not in self.disabled_calls:
+            # if status and params
+            if cmd == 'status' and params and 'trade_id' in params:
+                cmd = f"trade/{params['trade_id'][0]}"
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{base_url}/{cmd}", params=params, auth=auth) as r:
                     if r.status == 200:
@@ -130,7 +166,7 @@ class ft_bot(discord.Client):
             }
         ]
         embed = discord.Embed.from_dict(embeds[0])
-        return embed
+        return embed, True
 
     def _process_profit(self, server, data, *command_args):
         """
@@ -200,11 +236,12 @@ class ft_bot(discord.Client):
                     #f"({round_coin_value(data['drawdown_low'], stake_cur)})`\n"
                 )
 
-        return discord.Embed(description=markdown_msg)
+        return discord.Embed(description=markdown_msg), True
 
     def _process_status(self, server, data, *command_args):
         """
         */status <server>* : Show the status of a bot
+        */status <server> <trade_id>* : Show the status of specified trade on a bot
         """
         if data and len(data) > 0:
             if len(command_args) == 0:
@@ -216,156 +253,165 @@ class ft_bot(discord.Client):
                     msg.append(
                         [trade['trade_id'],
                         trade['pair'],
-                        trade['total_profit_ratio']*100,
-                        f"{trade['total_profit_abs']} {trade['quote_currency']}"
+                        f"{trade['total_profit_ratio']:.2%}",
+                        f"{trade['total_profit_abs']:.2f} {trade['quote_currency']}"
                         ]
                     )
-                table = tabulate(msg, headers='firstrow', tablefmt='grid')
-                return f"```{table}```"
-            # else:
-            #     embeds = []
-            #     position_adjust = self.servers[server]['position_adjustment_enable']
-            #     for r in data:
-            #         msg = ""
+                table = tabulate(msg, headers='firstrow', tablefmt='outline')
+                return discord.Embed(description=f"```{table}```")
+            else:
+                # embeds = []
+                r = data
 
-            #         r['open_date_hum'] = arrow.get(r['open_date']).humanize()
-            #         r['num_entries'] = len([o for o in r['orders'] if o['ft_is_entry']])
-            #         r['num_exits'] = len([o for o in r['orders'] if not o['ft_is_entry']
-            #                             and not o['ft_order_side'] == 'stoploss'])
-            #         r['exit_reason'] = r.get('exit_reason', "")
-            #         r['stake_amount_r'] = round_coin_value(r['stake_amount'],
-            #                                                r['quote_currency'])
-            #         r['max_stake_amount_r'] = round_coin_value(
-            #             r['max_stake_amount'] or r['stake_amount'], r['quote_currency'])
-            #         r['profit_abs_r'] = round_coin_value(r['profit_abs'],
-            #                                              r['quote_currency'])
-            #         r['realized_profit_r'] = round_coin_value(r['realized_profit'],
-            #                                                   r['quote_currency'])
-            #         r['total_profit_abs_r'] = round_coin_value(
-            #             r['total_profit_abs'], r['quote_currency'])
-            #         lines = [
-            #             "*Trade ID:* `{trade_id}`" +
-            #             (" `(since {open_date_hum})`" if r['is_open'] else ""),
-            #             "*Current Pair:* {pair}",
-            #             f"*Direction:* {'`Short`' if r.get('is_short') else '`Long`'}"
-            #             + " ` ({leverage}x)`" if r.get('leverage') else "",
-            #             "*Amount:* `{amount} ({stake_amount_r})`",
-            #             "*Total invested:* `{max_stake_amount_r}`" if position_adjust else "",
-            #             "*Enter Tag:* `{enter_tag}`" if r['enter_tag'] else "",
-            #             "*Exit Reason:* `{exit_reason}`" if r['exit_reason'] else "",
-            #         ]
+                position_adjust = self.servers[server]['config']['position_adjustment_enable']
 
-            #         if position_adjust:
-            #             max_entries = r['max_entry_position_adjustment']
-            #             max_buy_str = (f"/{max_entries + 1}" if (max_entries > 0) else "")
-            #             lines.extend([
-            #                 "*Number of Entries:* `{num_entries}" + max_buy_str + "`",
-            #                 "*Number of Exits:* `{num_exits}`"
-            #             ])
+                msg = ""
 
-            #         lines.extend([
-            #             "*Open Rate:* `{open_rate:.8f}`",
-            #             "*Close Rate:* `{close_rate:.8f}`" if r['close_rate'] else "",
-            #             "*Open Date:* `{open_date}`",
-            #             "*Close Date:* `{close_date}`" if r['close_date'] else "",
-            #             " \n*Current Rate:* `{current_rate:.8f}`" if r['is_open'] else "",
-            #             ("*Unrealized Profit:* " if r['is_open'] else "*Close Profit: *")
-            #             + "`{profit_ratio:.2%}` `({profit_abs_r})`",
-            #         ])
+                open_date_hum = arrow.get(r['open_date']).humanize()
+                #r['num_entries'] = len([o for o in r['orders'] if o['ft_is_entry']])
+                #r['num_exits'] = len([o for o in r['orders'] if not o['ft_is_entry']
+                #                    and not o['ft_order_side'] == 'stoploss'])
+                exit_reason = r.get('exit_reason', "")
+                stake_amount_r = round_coin_value(r['stake_amount'],
+                                                  r['quote_currency'])
+                max_stake_amount_r = round_coin_value(
+                    r['max_stake_amount'] or r['stake_amount'], r['quote_currency'])
+                profit_abs_r = round_coin_value(r['profit_abs'],
+                                                r['quote_currency'])
+                realized_profit_r = round_coin_value(r['realized_profit'],
+                                                     r['quote_currency'])
+                total_profit_abs_r = round_coin_value(
+                    r['total_profit_abs'], r['quote_currency'])
+                lines = [
+                    f"*Trade ID:* `{r['trade_id']}`" +
+                    (f" `(since {open_date_hum})`" if r['is_open'] else ""),
+                    f"*Current Pair:* `{r['pair']}`",
+                    f"*Direction:* {'`Short`' if r.get('is_short') else '`Long`'}"
+                    + f" ` ({r['leverage']}x)`" if r.get('leverage') else "",
+                    f"*Amount:* `{r['amount']} ({stake_amount_r})`",
+                    f"*Total invested:* `{max_stake_amount_r}`" if position_adjust else "",
+                    f"*Enter Tag:* `{r['enter_tag']}`" if r['enter_tag'] else "",
+                    f"*Exit Reason:* `{exit_reason}`" if r['exit_reason'] else "",
+                ]
 
-            #         if r['is_open']:
-            #             if r.get('realized_profit'):
-            #                 lines.extend([
-            #                     "*Realized Profit:* `{realized_profit_ratio:.2%} ({realized_profit_r})`",
-            #                     "*Total Profit:* `{total_profit_ratio:.2%} ({total_profit_abs_r})`"
-            #                 ])
+                # if position_adjust:
+                #     max_entries = r['max_entry_position_adjustment']
+                #     max_buy_str = (f"/{max_entries + 1}" if (max_entries > 0) else "")
+                #     lines.extend([
+                #         "*Number of Entries:* `{num_entries}" + max_buy_str + "`",
+                #         "*Number of Exits:* `{num_exits}`"
+                #     ])
 
-            #             # Append empty line to improve readability
-            #             lines.append(" ")
-            #             if (r['stop_loss_abs'] != r['initial_stop_loss_abs']
-            #                     and r['initial_stop_loss_ratio'] is not None):
-            #                 # Adding initial stoploss only if it is different from stoploss
-            #                 lines.append("*Initial Stoploss:* `{initial_stop_loss_abs:.8f}` "
-            #                             "`({initial_stop_loss_ratio:.2%})`")
+                lines.extend([
+                    f"*Open Rate:* `{r['open_rate']:.8f}`",
+                    f"*Close Rate:* `{r['close_rate']:.8f}`" if r['close_rate'] else "",
+                    f"*Open Date:* `{r['open_date']}`",
+                    f"*Close Date:* `{r['close_date']}`" if r['close_date'] else "",
+                    f" \n*Current Rate:* `{r['current_rate']:.8f}`" if r['is_open'] else "",
+                    (f"*Unrealized Profit:* " if r['is_open'] else "*Close Profit: *")
+                    + f"`{r['profit_ratio']:.2%}` `({profit_abs_r})`",
+                ])
 
-            #             # Adding stoploss and stoploss percentage only if it is not None
-            #             lines.append("*Stoploss:* `{stop_loss_abs:.8f}` " +
-            #                         ("`({stop_loss_ratio:.2%})`" if r['stop_loss_ratio'] else ""))
-            #             lines.append("*Stoploss distance:* `{stoploss_current_dist:.8f}` "
-            #                         "`({stoploss_current_dist_ratio:.2%})`")
-            #             if r['open_order']:
-            #                 lines.append(
-            #                     "*Open Order:* `{open_order}`"
-            #                     + "- `{exit_order_status}`" if r['exit_order_status'] else "")
+                if r['is_open']:
+                    if r.get('realized_profit'):
+                        lines.extend([
+                            f"*Realized Profit:* `{r['realized_profit_ratio']:.2%} ({realized_profit_r})`",
+                            f"*Total Profit:* `{r['total_profit_ratio']:.2%} ({total_profit_abs_r})`"
+                        ])
 
-            #         lines_detail = self._prepare_order_details(
-            #             r['orders'], r['quote_currency'], r['is_open'])
-            #         lines.extend(lines_detail if lines_detail else "")
+                    # Append empty line to improve readability
+                    lines.append(" ")
+                    if (r['stop_loss_abs'] != r['initial_stop_loss_abs']
+                            and r['initial_stop_loss_ratio'] is not None):
+                        # Adding initial stoploss only if it is different from stoploss
+                        lines.append(f"*Initial Stoploss:* `{r['initial_stop_loss_abs']:.8f}` "
+                                        f"`({r['initial_stop_loss_ratio']:.2%})`")
 
-            #         for line in lines:
-            #             msg += line + '\n'
-            #         embeds.append(msg)
-            #     return {'embeds': embeds}
+                    # Adding stoploss and stoploss percentage only if it is not None
+                    lines.append(f"*Stoploss:* `{r['stop_loss_abs']:.8f}` " +
+                                (f"`({r['stop_loss_ratio']:.2%})`" if r['stop_loss_ratio'] else ""))
+                    lines.append(f"*Stoploss distance:* `{r['stoploss_current_dist']:.8f}` "
+                                    f"`({r['stoploss_current_dist_ratio']:.2%})`")
+                    if r.get('open_orders'):
+                        lines.append(
+                            f"*Open Order:* `{r['open_orders']}`"
+                            + f"- `{r['exit_order_status']}`" if r['exit_order_status'] else "")
+
+                lines_detail = self._prepare_order_details(
+                    r['orders'], r['quote_currency'], r['is_open'])
+                lines.extend(lines_detail if lines_detail else "")
+
+                for line in lines:
+                    msg += line + '\n'
+
+                msg_colour = Color.red()
+                if r['profit_ratio'] > 0:
+                    msg_colour = Color.green()
+
+                return discord.Embed(description=msg, color=msg_colour), True
         else:
-            return f"`No active trades`"
+            return f"`No active trades`", False
 
-    # def _prepare_order_details(self, filled_orders: List, quote_currency: str, is_open: bool):
-    #     """
-    #     Prepare details of trade with entry adjustment enabled
-    #     """
-    #     lines_detail: List[str] = []
-    #     if len(filled_orders) > 0:
-    #         first_avg = filled_orders[0]["safe_price"]
-    #     order_nr = 0
-    #     for order in filled_orders:
-    #         lines: List[str] = []
-    #         if order['is_open'] is True:
-    #             continue
-    #         order_nr += 1
-    #         wording = 'Entry' if order['ft_is_entry'] else 'Exit'
+    def _prepare_order_details(self, filled_orders: List, quote_currency: str, is_open: bool):
+        """
+        Prepare details of trade with entry adjustment enabled
+        """
+        lines_detail: List[str] = []
+        if len(filled_orders) > 0:
+            first_avg = filled_orders[0]["safe_price"]
+        order_nr = 0
+        for order in filled_orders:
+            lines: List[str] = []
+            if order['is_open'] is True:
+                continue
+            order_nr += 1
+            # wording = 'Entry' if order['ft_is_entry'] else 'Exit'
 
-    #         cur_entry_datetime = arrow.get(order["order_filled_date"])
-    #         cur_entry_amount = order["filled"] or order["amount"]
-    #         cur_entry_average = order["safe_price"]
-    #         lines.append("  ")
-    #         if order_nr == 1:
-    #             lines.append(f"*{wording} #{order_nr}:*")
-    #             lines.append(
-    #                 f"*Amount:* {cur_entry_amount} "
-    #                 f"({round_coin_value(order['cost'], quote_currency)})"
-    #             )
-    #             lines.append(f"*Average Price:* {cur_entry_average}")
-    #         else:
-    #             sum_stake = 0
-    #             sum_amount = 0
-    #             for y in range(order_nr):
-    #                 loc_order = filled_orders[y]
-    #                 if loc_order['is_open'] is True:
-    #                     # Skip open orders (e.g. stop orders)
-    #                     continue
-    #                 amount = loc_order["filled"] or loc_order["amount"]
-    #                 sum_stake += amount * loc_order["safe_price"]
-    #                 sum_amount += amount
-    #             prev_avg_price = sum_stake / sum_amount
-    #             # TODO: This calculation ignores fees.
-    #             price_to_1st_entry = ((cur_entry_average - first_avg) / first_avg)
-    #             minus_on_entry = 0
-    #             if prev_avg_price:
-    #                 minus_on_entry = (cur_entry_average - prev_avg_price) / prev_avg_price
+            cur_entry_datetime = arrow.get(order["order_filled_timestamp"])
+            cur_entry_amount = order["filled"] or order["amount"]
+            cur_entry_average = order["safe_price"]
+            lines.append("  ")
+            if order_nr == 1:
+                # lines.append(f"*{wording} #{order_nr}:*")
+                lines.append(f"*#{order_nr}:*")
+                lines.append(
+                    f"*Amount:* `{cur_entry_amount} "
+                    f"({round_coin_value(order['cost'], quote_currency)})`"
+                )
+                lines.append(f"*Average Price:* `{cur_entry_average}`")
+            else:
+                sum_stake = 0
+                sum_amount = 0
+                for y in range(order_nr):
+                    loc_order = filled_orders[y]
+                    if loc_order['is_open'] is True:
+                        # Skip open orders (e.g. stop orders)
+                        continue
+                    amount = loc_order["filled"] or loc_order["amount"]
+                    sum_stake += amount * loc_order["safe_price"]
+                    sum_amount += amount
+                prev_avg_price = sum_stake / sum_amount
+                # TODO: This calculation ignores fees.
+                price_to_1st_entry = ((cur_entry_average - first_avg) / first_avg)
+                minus_on_entry = 0
+                if prev_avg_price:
+                    minus_on_entry = (cur_entry_average - prev_avg_price) / prev_avg_price
 
-    #             lines.append(f"*{wording} #{order_nr}:* at {minus_on_entry:.2%} avg Profit")
-    #             if is_open:
-    #                 lines.append("({})".format(cur_entry_datetime
-    #                                            .humanize(granularity=["day", "hour", "minute"])))
-    #             lines.append(f"*Amount:* {cur_entry_amount} "
-    #                          f"({round_coin_value(order['cost'], quote_currency)})")
-    #             lines.append(f"*Average {wording} Price:* {cur_entry_average} "
-    #                          f"({price_to_1st_entry:.2%} from 1st entry Rate)")
-    #             lines.append(f"*Order filled:* {order['order_filled_date']}")
+                # lines.append(f"*{wording} #{order_nr}:* at {minus_on_entry:.2%} avg Profit")
+                lines.append(f"*#{order_nr}:* at {minus_on_entry:.2%} avg Profit")
+                if is_open:
+                    lines.append("({})".format(cur_entry_datetime
+                                               .humanize(granularity=["day", "hour", "minute"])))
+                lines.append(f"*Amount:* {cur_entry_amount} "
+                             f"({round_coin_value(order['cost'], quote_currency)})")
+                # lines.append(f"*Average {wording} Price:* {cur_entry_average} "
+                lines.append(f"*Average Price:* {cur_entry_average} "
+                             f"({price_to_1st_entry:.2%} from 1st entry Rate)")
+                # lines.append(f"*Order filled:* {order['order_filled_date']}")
 
-    #         lines_detail.append("\n".join(lines))
+            lines_detail.append("\n".join(lines))
 
-    #     return lines_detail
+        return lines_detail
 
     def _process_trades(self, server: str, data, *command_args):
         """
@@ -376,14 +422,14 @@ class ft_bot(discord.Client):
             if len(command_args) == 0:
                 num_trades = 10
             else:
-                num_trades = command_args[0]
+                num_trades = int(command_args[0])
 
             logger.info(f"{server}: Processing latest {num_trades} trades")
             msg = []
             headers = ["ID","PAIR","CLOSE DATE","PROFIT %","PROFIT"]
             msg.append(headers)
 
-            for trade in data['trades'][-num_trades:]:
+            for trade in list(reversed(data['trades'][-num_trades:])):
                 msg.append(
                     [trade['trade_id'],
                     trade['pair'],
@@ -398,16 +444,16 @@ class ft_bot(discord.Client):
                 f'**{server} - {num_trades} recent trades**:\n'
                 f'```{table}```'
             )
-            return f"{message}"
+            return f"{message}", False
 
-        return f"No trades to show"
+        return f"No trades to show", False
 
     def _process_daily(self, server, data, *command_args):
         """
         */daily <server>* : Show the last 12 days profit summary
         */daily <server> <limit>* : Show the last <limit> days profit summary
         """
-        num_days = command_args[0] if len(command_args) > 0 else 12
+        num_days = int(command_args[0]) if len(command_args) > 0 else 12
 
         stats_tab = tabulate(
             [[f"{period['date']} ({period['trade_count']})",
@@ -427,14 +473,14 @@ class ft_bot(discord.Client):
             f'**{server} - Profit over the last {num_days} days**:\n'
             f'```{stats_tab}```'
         )
-        return f"{message}"
+        return f"{message}", False
 
     def _process_weekly(self, server, data, *command_args):
         """
         */weekly <server>* : Show the last 12 weeks profit summary
         */weekly <server> <limit>* : Show the last <limit> weeks profit summary
         """
-        num_weeks = command_args[0] if len(command_args) > 0 else 12
+        num_weeks = int(command_args[0]) if len(command_args) > 0 else 12
 
         stats_tab = tabulate(
             [[f"{period['date']} ({period['trade_count']})",
@@ -454,14 +500,14 @@ class ft_bot(discord.Client):
             f'**{server} - Profit over the last {num_weeks} weeks**:\n'
             f'```{stats_tab}```'
         )
-        return f"{message}"
+        return f"{message}", False
 
     def _process_monthly(self, server, data, *command_args):
         """
         */monthly <server>* : Show the last 12 months profit summary
         */monthly <server> <limit>* : Show the last <limit> months profit summary
         """
-        num_months = command_args[0] if len(command_args) > 0 else 12
+        num_months = int(command_args[0]) if len(command_args) > 0 else 12
 
         stats_tab = tabulate(
             [[f"{period['date']} ({period['trade_count']})",
@@ -481,7 +527,7 @@ class ft_bot(discord.Client):
             f'**{server} - Profit over the last {num_months} months**:\n'
             f'```{stats_tab}```'
         )
-        return f"{message}"
+        return f"{message}", False
 
     def _process_show_config(self, server, data, *command_args):
         """
@@ -521,11 +567,11 @@ class ft_bot(discord.Client):
             f"*Strategy:* `{data['strategy']}`\n"
             f"*Current state:* `{data['state']}`")
 
-        return discord.Embed(description=msg)
+        return discord.Embed(description=msg), False
 
     async def on_message(self, message) -> None:
-        # don't let the bot reply to itself
-        if message.author == self.user:
+        # don't let the bot reply to itself or other bots
+        if message.author == self.user or message.author.bot:
             return
 
         cmd_string = message.content.split(" ")
@@ -574,17 +620,36 @@ class ft_bot(discord.Client):
                         cmd_args = cmd_string[2:]
                         params = self.parse_command_args(cmd, cmd_args)
 
-                js = (await self.process_command(server, cmd, params))
-                func = self.available_calls[cmd]
-                embed = func(server, js, *cmd_args)
+                cmdfunc = self.process_command
+                js = (await cmdfunc(server, cmd, params))
+
+                callbackfunc = self.available_calls[cmd]
+                embed, refreshable = callbackfunc(server, js, *cmd_args)
+
+                view = None
+                if refreshable:
+                    view = RefreshableView(
+                        cmdfunc,
+                        cmd_args,
+                        callbackfunc,
+                        server,
+                        cmd,
+                        params
+                    )
+
                 if embed is not None:
                     if isinstance(embed, Embed):
-                        await message.channel.send(embed=embed)
+                        await message.channel.send(embed=embed,
+                                                   view=view)
+
                     elif isinstance(embed, List):
                         for m in embed:
                             await message.channel.send(embed=m)
                     else:
-                        await message.channel.send(embed)
+                        await message.channel.send(
+                            embed,
+                            view=view)
+
             except Exception as e:
                 await message.channel.send(f"There was an error. Please check the ft_bot logs.")
                 traceback.print_exc()
@@ -599,7 +664,7 @@ class ft_bot(discord.Client):
             elif cmd in ['trades']:
                 params['limit'] = command_args[0]
             elif cmd in ['status']:
-                params['trade_ids'] = command_args
+                params['trade_id'] = command_args[0]
 
         return params
 
