@@ -2,7 +2,16 @@
 
 Unofficial discord bot to view and control running freqtrade instances.
 
-At the moment, only `$servers`, `$ping` and `$status` commands work!
+## Supported commands
+
+* `/ping`
+* `/show_config`
+* `/status`
+* `/profit`
+* `/trades`
+* `/daily`
+* `/weekly`
+* `/monthly`
 
 ## Requirements
 
